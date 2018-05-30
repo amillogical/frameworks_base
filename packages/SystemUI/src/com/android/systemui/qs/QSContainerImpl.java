@@ -17,13 +17,22 @@
 package com.android.systemui.qs;
 
 import android.content.Context;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
 import android.graphics.Point;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.UserHandle;
+import android.provider.Settings;
 import android.util.AttributeSet;
 import android.view.View;
 import android.widget.FrameLayout;
 
 import com.android.systemui.R;
 import com.android.systemui.qs.customize.QSCustomizer;
+
+import static android.provider.Settings.Secure.DEVICE_THEME_ALPHA;
 
 /**
  * Wrapper view with background which contains {@link QSPanel} and {@link BaseStatusBarHeader}
@@ -41,8 +50,15 @@ public class QSContainerImpl extends FrameLayout {
     private View mQSFooter;
     private float mFullElevation;
 
+    private Context mContext;
+    private Drawable mBackground;
+    private Handler mHandler;
+
     public QSContainerImpl(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mContext = context;
+        Handler mHandler = new Handler();
+        mColorManagerObserver.observe();
     }
 
     @Override
@@ -54,9 +70,34 @@ public class QSContainerImpl extends FrameLayout {
         mQSCustomizer = findViewById(R.id.qs_customize);
         mQSFooter = findViewById(R.id.qs_footer);
         mFullElevation = mQSPanel.getElevation();
+        mBackground = mContext.getDrawable(R.drawable.qs_background_primary);
+        mColorManagerObserver.update();
 
         setClickable(true);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+    }
+
+    private ColorManagerObserver mColorManagerObserver = new ColorManagerObserver(mHandler);
+    private class ColorManagerObserver extends ContentObserver {
+        ColorManagerObserver(Handler handler) {
+            super(handler);
+        }
+
+        void observe() {
+            ContentResolver resolver = mContext.getContentResolver();
+            resolver.registerContentObserver(Settings.Secure.getUriFor(
+                    Settings.Secure.DEVICE_THEME_ALPHA),
+                    false, this, UserHandle.USER_ALL);
+        }
+
+        @Override
+        public void onChange(boolean selfChange, Uri uri) {
+            update();
+        }
+
+        public void update() {
+            updateBackgroundAlpha();
+        }
     }
 
     @Override
@@ -102,6 +143,18 @@ public class QSContainerImpl extends FrameLayout {
     public void setHeightOverride(int heightOverride) {
         mHeightOverride = heightOverride;
         updateExpansion();
+    }
+
+    protected void updateBackgroundAlpha() {
+        if (mBackground == null) return;
+        int alpha = Settings.Secure.getIntForUser(
+            mContext.getContentResolver(), DEVICE_THEME_ALPHA, 1, UserHandle.USER_CURRENT);
+        if (alpha != 0) {
+            mBackground.setAlpha(222);
+        } else {
+            mBackground.setAlpha(255);
+        }
+        setBackground(mBackground);
     }
 
     public void updateExpansion() {
